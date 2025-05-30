@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Gastos Menores - Mejoras Capacitación</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" xintegrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBALEAdytAAPyfJE2lACrzRqoLX2TCcGkbxrPORTER8A==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .page { display: none; } .page.active { display: block; }
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
+        .modal-content { background-color: #fefefe; margin: auto; padding: 25px; border: 1px solid #888; width: 90%; max-width: 500px; border-radius: 0.5rem; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2), 0 20px 40px -10px rgba(0,0,0,0.3); text-align: center; }
+        .balance-negative { color: #ef4444; } .balance-positive { color: #22c55e; }
+        .table-responsive { overflow-x: auto; }
+        .expense-list-container::-webkit-scrollbar { width: 8px; }
+        .expense-list-container::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        .expense-list-container::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        .form-section { display: none; }
+        .amount-in-words { background-color: #e9ecef; padding: 0.75rem; border-radius: 0.375rem; font-style: italic; color: #4b5563; min-height: 40px; }
+        .dashboard-balance-label { font-size: 0.875rem; font-weight: 600; color: #d1d5db; text-transform: uppercase; letter-spacing: 0.05em; }
+        .dashboard-balance-amount { font-size: 2.25rem; font-weight: 700; color: white; }
+        .dashboard-balance-not-configured { font-size: 1rem; font-style: italic; color: #e5e7eb; }
+        .page-title { font-size: 1.875rem; font-weight: 700; color: #1f2937; margin-bottom: 1.5rem; text-align: center; }
+        .page-title .fund-name-highlight { color: #4f46e5; }
+        .action-button { background-color: #4f46e5; color: white; font-weight: 600; padding: 0.75rem 1.5rem; border-radius: 0.5rem; transition: background-color 0.2s; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); }
+        .action-button:hover { background-color: #4338ca; }
+        .action-button i { margin-right: 0.5rem; }
+        #previewExpensePage .preview-section { margin-bottom: 1rem; padding: 0.75rem; background-color: #f9fafb; border-radius: 0.375rem; border: 1px solid #e5e7eb; }
+        #previewExpensePage .preview-section h4 { font-size: 1.125rem; font-weight: 600; color: #374151; margin-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.25rem; }
+        #previewExpensePage .preview-item { display: flex; justify-content: space-between; padding: 0.25rem 0; font-size: 0.9rem;}
+        #previewExpensePage .preview-item strong { color: #4b5563; margin-right: 0.5rem; }
+        #previewExpensePage .preview-item span { color: #1f2937; text-align: right; }
+        #pdfContentHost { font-family: Arial, sans-serif; color: #333; }
+        .history-action-btn { padding: 0.3rem 0.5rem; font-size: 0.8rem; margin: 0 0.15rem; }
+        .export-button-small { padding: 0.5rem 1rem; font-size: 0.875rem; /* text-sm */ }
+        .sub-input-group { display: flex; gap: 0.5rem; align-items: center; }
+        .sub-input-group input[type="number"] { width: 30%; }
+        .sub-input-group span { width: 40%; text-align: right; padding-right: 0.5rem; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="container mx-auto max-w-4xl bg-white p-6 md:p-8 rounded-xl shadow-2xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800"><i class="fas fa-cash-register mr-2 text-indigo-600"></i>Gestor de Gastos Menores</h1>
+            <p id="userIdDisplay" class="text-xs text-gray-500 mt-2"></p>
+        </header>
+
+        <div id="confirmationModal" class="modal"><div class="modal-content"><h2 id="confirmationTitle" class="text-xl font-semibold mb-4 text-gray-700">Confirmar Acción</h2><p id="confirmationMessage" class="text-sm text-gray-600 mb-6"></p><div class="flex justify-end space-x-3"><button id="confirmCancelBtn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg">Cancelar</button><button id="confirmOkBtn" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg"><i class="fas fa-check mr-2"></i>Confirmar</button></div></div></div>
+        <div id="selectFundModal" class="modal"><div class="modal-content"><h2 id="selectFundModalTitle" class="text-xl font-semibold mb-6 text-gray-700">Seleccionar Caja</h2><div class="space-y-4"><button id="selectFundHospitalBtn" data-fund="hospital" class="w-full action-button bg-blue-500 hover:bg-blue-600"><i class="fas fa-hospital"></i>Presupuesto Hospital</button><button id="selectFundSendaBtn" data-fund="senda" class="w-full action-button bg-green-500 hover:bg-green-600"><i class="fas fa-leaf"></i>Presupuesto SENDA</button></div><button id="selectFundModalCloseBtn" class="mt-6 text-gray-600 hover:text-gray-800">Cancelar</button></div></div>
+        
+        <div id="loadingIndicator" class="text-center my-10"><i class="fas fa-spinner fa-spin fa-3x text-indigo-600"></i><p class="text-gray-600 mt-2">Cargando datos...</p></div>
+
+        <main id="appContentContainer">
+            <div id="dashboardPage" class="page active">
+                <section class="mb-8 p-6 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 text-white rounded-xl shadow-2xl"><h2 class="text-3xl font-bold mb-6 text-center">Resumen General de Cajas</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8"><div class="bg-white/25 p-6 rounded-lg shadow-lg backdrop-blur-sm"><h3 class="dashboard-balance-label mb-1"><i class="fas fa-hospital mr-2"></i>Presupuesto Hospital</h3><p id="dashboardHospitalBalance" class="dashboard-balance-amount">--</p></div><div class="bg-white/25 p-6 rounded-lg shadow-lg backdrop-blur-sm"><h3 class="dashboard-balance-label mb-1"><i class="fas fa-leaf mr-2"></i>Presupuesto SENDA</h3><p id="dashboardSendaBalance" class="dashboard-balance-amount">--</p></div></div><div class="flex flex-col sm:flex-row justify-center items-center gap-4"><button id="dashboardGoToAddExpenseBtn" class="action-button bg-white text-indigo-700 hover:bg-gray-100 text-lg"><i class="fas fa-plus-circle"></i>Registrar Nuevo Gasto</button><button id="dashboardGoToHistoryBtn" class="action-button bg-white text-purple-700 hover:bg-gray-100 text-lg"><i class="fas fa-history"></i>Ver Historial de Gastos</button></div></section>
+            </div>
+
+            <div id="registerExpensePage" class="page">
+                <button id="backToDashboardFromExpenseBtn" class="action-button mb-6 bg-gray-500 hover:bg-gray-600"><i class="fas fa-arrow-left"></i>Volver al Resumen</button>
+                <h2 id="registerExpensePageTitle" class="page-title">Registrar Nuevo Gasto para <span class="fund-name-highlight"></span></h2>
+                <section class="p-6 bg-white rounded-xl shadow-lg">
+                    <form id="expenseForm" class="space-y-6">
+                        <div><label for="expenseType" class="block text-sm font-medium text-gray-700 mb-1">Tipo de Gasto</label><select id="expenseType" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150" required><option value="">-- Seleccione un tipo --</option><option value="adquisicion">Adquisición</option><option value="capacitacion">Capacitación</option><option value="correspondencia">Correspondencia</option><option value="otros">Otros</option></select></div>
+                        <div id="specificExpenseFieldsContainer" class="space-y-6">
+                            <div id="adquisicionFields" class="form-section space-y-4 p-4 border border-gray-200 rounded-lg"><h3 class="text-lg font-medium text-gray-700">Detalles de Adquisición</h3><div><label for="adqDescription" class="block text-sm font-medium text-gray-700 mb-1">Descripción del Gasto</label><input type="text" id="adqDescription" placeholder="Ej: Compra de útiles" class="w-full p-3 border border-gray-300 rounded-lg"></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label for="adqRequestedBy" class="block text-sm font-medium text-gray-700 mb-1">Solicitado por</label><input type="text" id="adqRequestedBy" class="w-full p-3 border border-gray-300 rounded-lg"></div><div><label for="adqPurchasedBy" class="block text-sm font-medium text-gray-700 mb-1">Comprado por (Pagado a)</label><input type="text" id="adqPurchasedBy" class="w-full p-3 border border-gray-300 rounded-lg"></div></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label for="adqPurchaseDate" class="block text-sm font-medium text-gray-700 mb-1">Fecha Compra</label><input type="date" id="adqPurchaseDate" class="w-full p-3 border border-gray-300 rounded-lg"></div><div><label for="adqInvoiceNumber" class="block text-sm font-medium text-gray-700 mb-1">Nº Boleta/Factura</label><input type="text" id="adqInvoiceNumber" class="w-full p-3 border border-gray-300 rounded-lg"></div></div><div><label for="adqAmount" class="block text-sm font-medium text-gray-700 mb-1">Monto</label><input type="number" id="adqAmount" placeholder="Ej: 15000" class="w-full p-3 border border-gray-300 rounded-lg"></div><div><label class="block text-sm font-medium text-gray-700 mb-1">Monto en Letras</label><div id="adqAmountInWords" class="amount-in-words"></div></div></div>
+                            <div id="capacitacionFields" class="form-section space-y-4 p-4 border border-gray-200 rounded-lg">
+                                <h3 class="text-lg font-medium text-gray-700">Detalles de Capacitación</h3>
+                                <div><label for="capReason" class="block text-sm font-medium text-gray-700 mb-1">Motivo del Gasto</label><input type="text" id="capReason" class="w-full p-3 border border-gray-300 rounded-lg"></div>
+                                <div><label for="capParticipant" class="block text-sm font-medium text-gray-700 mb-1">Quién Participa (Pagado a)</label><input type="text" id="capParticipant" class="w-full p-3 border border-gray-300 rounded-lg"></div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div><label for="capStartDate" class="block text-sm font-medium text-gray-700 mb-1">Fecha Inicio Capacitación</label><input type="date" id="capStartDate" class="w-full p-3 border border-gray-300 rounded-lg"></div>
+                                    <div><label for="capEndDate" class="block text-sm font-medium text-gray-700 mb-1">Fecha Término Capacitación</label><input type="date" id="capEndDate" class="w-full p-3 border border-gray-300 rounded-lg"></div>
+                                </div>
+                                <h4 class="text-md font-medium text-gray-600 pt-2">Desglose de Gastos:</h4>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Combustible</label>
+                                    <div class="sub-input-group">
+                                        <input type="number" id="capFuelLiters" class="p-3 border border-gray-300 rounded-lg" placeholder="Litros">
+                                        <input type="number" id="capFuelPricePerLiter" class="p-3 border border-gray-300 rounded-lg" placeholder="Precio/Litro">
+                                        <span id="capFuelSubtotalDisplay" class="p-3 bg-gray-100 rounded-lg text-right">0</span>
+                                    </div>
+                                </div>
+                                <div><label for="capTolls" class="block text-sm font-medium text-gray-700 mb-1">Peaje</label><input type="number" id="capTolls" class="cap-sub-amount w-full p-3 border border-gray-300 rounded-lg" placeholder="0"></div>
+                                <div><label for="capLunch" class="block text-sm font-medium text-gray-700 mb-1">Almuerzo</label><input type="number" id="capLunch" class="cap-sub-amount w-full p-3 border border-gray-300 rounded-lg" placeholder="0"></div>
+                                <div class="space-y-2">
+                                    <label class="block text-sm font-medium text-gray-700">Movilización Local Adicional (Colectivos, etc.)</label>
+                                    <input type="text" id="capLocalTransportDesc" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="Descripción (ej: Colectivos Frutillar y Pto Montt)">
+                                    <input type="number" id="capLocalTransportAmount" class="cap-sub-amount w-full p-3 border border-gray-300 rounded-lg" placeholder="Monto Total Mov. Local">
+                                </div>
+                                <div><label for="capOtherTraining" class="block text-sm font-medium text-gray-700 mb-1">Otros Gastos de Capacitación</label><input type="number" id="capOtherTraining" class="cap-sub-amount w-full p-3 border border-gray-300 rounded-lg" placeholder="0"></div>
+                                <div><label class="block text-sm font-medium text-gray-700 mb-1">Valor Total Capacitación</label><input type="number" id="capTotalAmount" class="w-full p-3 border border-gray-300 rounded-lg bg-gray-100" readonly></div>
+                                <div><label class="block text-sm font-medium text-gray-700 mb-1">Total en Letras</label><div id="capAmountInWords" class="amount-in-words"></div></div>
+                            </div>
+                            <div id="correspondenciaFields" class="form-section space-y-4 p-4 border border-gray-200 rounded-lg"><h3 class="text-lg font-medium text-gray-700">Detalles de Correspondencia</h3><div><label for="corrDetail" class="block text-sm font-medium text-gray-700 mb-1">Detalle del Gasto</label><input type="text" id="corrDetail" class="w-full p-3 border border-gray-300 rounded-lg"></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label for="corrRequestedBy" class="block text-sm font-medium text-gray-700 mb-1">A solicitud de</label><input type="text" id="corrRequestedBy" class="w-full p-3 border border-gray-300 rounded-lg"></div><div><label for="corrSentBy" class="block text-sm font-medium text-gray-700 mb-1">Enviado por (Pagado a)</label><input type="text" id="corrSentBy" class="w-full p-3 border border-gray-300 rounded-lg"></div></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label for="corrDate" class="block text-sm font-medium text-gray-700 mb-1">Fecha</label><input type="date" id="corrDate" class="w-full p-3 border border-gray-300 rounded-lg"></div><div><label for="corrInvoiceNumber" class="block text-sm font-medium text-gray-700 mb-1">Nº Boleta/Despacho</label><input type="text" id="corrInvoiceNumber" class="w-full p-3 border border-gray-300 rounded-lg"></div></div><div><label for="corrAmount" class="block text-sm font-medium text-gray-700 mb-1">Monto</label><input type="number" id="corrAmount" placeholder="Ej: 5000" class="w-full p-3 border border-gray-300 rounded-lg"></div><div><label class="block text-sm font-medium text-gray-700 mb-1">Monto en Letras</label><div id="corrAmountInWords" class="amount-in-words"></div></div></div>
+                            <div id="otrosFields" class="form-section space-y-4 p-4 border border-gray-200 rounded-lg">
+                                <h3 class="text-lg font-medium text-gray-700">Otros Gastos</h3>
+                                <div><label for="otrosReason" class="block text-sm font-medium text-gray-700 mb-1">Motivo del Gasto</label><input type="text" id="otrosReason" class="w-full p-3 border border-gray-300 rounded-lg"></div>
+                                <div><label for="otrosPaidTo" class="block text-sm font-medium text-gray-700 mb-1">Entregado A / Beneficiario</label><input type="text" id="otrosPaidTo" class="w-full p-3 border border-gray-300 rounded-lg"></div>
+                                <div><label for="otrosAmount" class="block text-sm font-medium text-gray-700 mb-1">Monto</label><input type="number" id="otrosAmount" placeholder="Ej: 2000" class="w-full p-3 border border-gray-300 rounded-lg"></div>
+                                <div><label class="block text-sm font-medium text-gray-700 mb-1">Monto en Letras</label><div id="otrosAmountInWords" class="amount-in-words"></div></div>
+                            </div>
+                        </div>
+                        <p id="expenseFormError" class="text-red-500 text-sm mt-1"></p>
+                        <button type="button" id="previewExpenseBtn" class="w-full action-button bg-purple-600 hover:bg-purple-700"><i class="fas fa-eye"></i>Previsualizar Gasto</button>
+                    </form>
+                </section>
+            </div>
+            
+            <div id="previewExpensePage" class="page">
+                <h2 id="previewExpensePageTitle" class="page-title">Previsualización de Gasto para <span class="fund-name-highlight"></span></h2>
+                <div id="previewContent" class="p-6 bg-white rounded-xl shadow-lg mb-6"></div>
+                <div id="pdfContentHost" class="hidden"></div>
+                <div class="flex flex-col sm:flex-row justify-around items-center gap-4">
+                    <button id="editPreviewBtn" class="action-button bg-yellow-500 hover:bg-yellow-600 text-gray-800"><i class="fas fa-edit"></i>Editar</button>
+                    <button id="discardPreviewBtn" class="action-button bg-gray-500 hover:bg-gray-600"><i class="fas fa-times-circle"></i>Descartar</button>
+                    <button id="confirmAndSaveExpenseBtn" class="action-button bg-green-500 hover:bg-green-600"><i class="fas fa-check-circle"></i>Confirmar y Guardar PDF</button>
+                </div>
+            </div>
+
+            <div id="historyPage" class="page">
+                <button id="backToDashboardFromHistoryBtn" class="action-button mb-6 bg-gray-500 hover:bg-gray-600"><i class="fas fa-arrow-left"></i>Volver al Resumen</button>
+                <h2 id="historyPageTitle" class="page-title">Historial y Gestión de Caja <span class="fund-name-highlight"></span></h2>
+                <section class="mb-8 p-6 bg-gray-50 rounded-xl shadow-lg">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center"> 
+                        <div class="text-center md:text-left">
+                            <h3 class="text-sm font-semibold text-gray-500 uppercase">Fondo Inicial Fijo</h3>
+                            <p id="historyInitialAmountDisplay" class="text-2xl font-bold text-indigo-700">--</p>
+                        </div>
+                        <div class="text-center">
+                            <h3 class="text-sm font-semibold text-gray-500 uppercase">Saldo Actual</h3>
+                            <p id="historyCurrentBalanceDisplay" class="text-3xl font-extrabold">--</p>
+                        </div>
+                        <div class="md:col-span-2 flex justify-center items-center mt-4 md:mt-0"> 
+                             <button id="replenishCashBtn" class="action-button bg-green-500 hover:bg-green-600">
+                                <i class="fas fa-undo-alt mr-2"></i>Restablecer Caja al Monto Inicial
+                            </button>
+                        </div>
+                    </div>
+                </section>
+                <section class="p-6 bg-white rounded-xl shadow-lg">
+                    <h3 class="text-xl md:text-2xl font-semibold mb-6 text-gray-700 border-b pb-3"><i class="fas fa-list-ul mr-2 text-indigo-600"></i>Historial de Gastos</h3>
+                    
+                    <div class="mb-4">
+                        <label for="searchInput" class="block text-sm font-medium text-gray-700 mb-1">Buscar Gasto:</label>
+                        <input type="text" id="searchInput" placeholder="Escriba para buscar..." class="w-full p-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div class="mb-6 p-4 bg-gray-100 rounded-lg">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                            <div class="grid grid-cols-2 gap-2 col-span-1 md:col-span-2">
+                                <div>
+                                    <label for="exportDateFrom" class="block text-sm font-medium text-gray-700 mb-1">Exportar Desde:</label>
+                                    <input type="date" id="exportDateFrom" class="w-full p-2 border border-gray-300 rounded-lg">
+                                </div>
+                                <div>
+                                    <label for="exportDateTo" class="block text-sm font-medium text-gray-700 mb-1">Hasta:</label>
+                                    <input type="date" id="exportDateTo" class="w-full p-2 border border-gray-300 rounded-lg">
+                                </div>
+                            </div>
+                            <div class="col-span-1">
+                                <button id="exportToExcelBtn" class="w-full action-button bg-emerald-600 hover:bg-emerald-700 export-button-small">
+                                    <i class="fas fa-file-excel"></i>Exportar CSV
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="expenseListContainer" class="expense-list-container max-h-[30rem] overflow-y-auto table-responsive">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50 sticky top-0 z-10">
+                                <tr>
+                                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descripción/Motivo</th>
+                                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pagado A / Participante</th>
+                                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Monto</th>
+                                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha Reg.</th>
+                                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="expenseList" class="bg-white divide-y divide-gray-200"></tbody>
+                        </table>
+                        <div id="noExpensesRow" class="hidden px-6 py-10 text-center text-gray-500"><i class="fas fa-folder-open fa-3x mb-3"></i><p>No hay gastos registrados para esta caja.</p></div>
+                    </div>
+                </section>
+            </div>
+        </main>
+        
+        <footer class="mt-12 text-center text-sm text-gray-500"><p>&copy; <span id="currentYear"></span> Gestor de Gastos Menores. Todos los derechos reservados.</p></footer>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, addDoc, getDocs, serverTimestamp, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+	const firebaseConfig = {apiKey: "AIzaSyAVICpUklWxyQLoT5ZsdX1PzITLQJ3_rFo",authDomain: "cajafrutillar.firebaseapp.com",projectId: "cajafrutillar",storageBucket:"cajafrutillar.firebasestorage.app",messagingSenderId: "566074730669",appId: "1:566074730669:web:c35920f06925bb198abe24",measurementId: "G-W11DD90N2H"};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-petty-cash-app-excel-search';
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        const dashboardPage = document.getElementById('dashboardPage');
+        const registerExpensePage = document.getElementById('registerExpensePage');
+        const previewExpensePage = document.getElementById('previewExpensePage');
+        const historyPage = document.getElementById('historyPage');
+        const pages = [dashboardPage, registerExpensePage, previewExpensePage, historyPage];
+
+        const confirmationModal = document.getElementById('confirmationModal'); const confirmationTitle = document.getElementById('confirmationTitle'); const confirmationMessage = document.getElementById('confirmationMessage'); const confirmCancelBtn = document.getElementById('confirmCancelBtn'); const confirmOkBtn = document.getElementById('confirmOkBtn');
+        const selectFundModal = document.getElementById('selectFundModal'); const selectFundModalTitle = document.getElementById('selectFundModalTitle'); const selectFundHospitalBtn = document.getElementById('selectFundHospitalBtn'); const selectFundSendaBtn = document.getElementById('selectFundSendaBtn'); const selectFundModalCloseBtn = document.getElementById('selectFundModalCloseBtn');
+
+        const loadingIndicator = document.getElementById('loadingIndicator'); const appContentContainer = document.getElementById('appContentContainer'); const userIdDisplay = document.getElementById('userIdDisplay'); document.getElementById('currentYear').textContent = new Date().getFullYear();
+        
+        const dashboardHospitalBalance = document.getElementById('dashboardHospitalBalance'); const dashboardSendaBalance = document.getElementById('dashboardSendaBalance'); const dashboardGoToAddExpenseBtn = document.getElementById('dashboardGoToAddExpenseBtn'); const dashboardGoToHistoryBtn = document.getElementById('dashboardGoToHistoryBtn');
+        const registerExpensePageTitleEl = document.getElementById('registerExpensePageTitle').querySelector('.fund-name-highlight'); const expenseForm = document.getElementById('expenseForm'); const expenseTypeSelect = document.getElementById('expenseType'); const previewExpenseBtn = document.getElementById('previewExpenseBtn'); const backToDashboardFromExpenseBtn = document.getElementById('backToDashboardFromExpenseBtn');
+        const previewExpensePageTitleEl = document.getElementById('previewExpensePageTitle').querySelector('.fund-name-highlight'); const previewContent = document.getElementById('previewContent'); const pdfContentHost = document.getElementById('pdfContentHost'); const editPreviewBtn = document.getElementById('editPreviewBtn'); const discardPreviewBtn = document.getElementById('discardPreviewBtn'); const confirmAndSaveExpenseBtn = document.getElementById('confirmAndSaveExpenseBtn');
+        const historyPageTitleEl = document.getElementById('historyPageTitle').querySelector('.fund-name-highlight'); const historyInitialAmountDisplay = document.getElementById('historyInitialAmountDisplay'); const historyCurrentBalanceDisplay = document.getElementById('historyCurrentBalanceDisplay'); const replenishCashBtn = document.getElementById('replenishCashBtn');
+        const expenseList = document.getElementById('expenseList'); const noExpensesRow = document.getElementById('noExpensesRow'); const backToDashboardFromHistoryBtn = document.getElementById('backToDashboardFromHistoryBtn');
+        const searchInput = document.getElementById('searchInput');
+        const exportDateFrom = document.getElementById('exportDateFrom');
+        const exportDateTo = document.getElementById('exportDateTo');
+        const exportToExcelBtn = document.getElementById('exportToExcelBtn');
+
+
+        const adqFields = document.getElementById('adquisicionFields'); const adqDescription = document.getElementById('adqDescription'); const adqRequestedBy = document.getElementById('adqRequestedBy'); const adqPurchasedBy = document.getElementById('adqPurchasedBy'); const adqPurchaseDate = document.getElementById('adqPurchaseDate'); const adqInvoiceNumber = document.getElementById('adqInvoiceNumber'); const adqAmount = document.getElementById('adqAmount'); const adqAmountInWords = document.getElementById('adqAmountInWords');
+        const capFields = document.getElementById('capacitacionFields'); const capReason = document.getElementById('capReason'); const capParticipant = document.getElementById('capParticipant'); 
+        const capStartDate = document.getElementById('capStartDate'); 
+        const capEndDate = document.getElementById('capEndDate'); 
+        const capFuelLiters = document.getElementById('capFuelLiters');
+        const capFuelPricePerLiter = document.getElementById('capFuelPricePerLiter');
+        const capFuelSubtotalDisplay = document.getElementById('capFuelSubtotalDisplay');
+        const capLocalTransportDesc = document.getElementById('capLocalTransportDesc');
+        const capLocalTransportAmount = document.getElementById('capLocalTransportAmount');
+        const capTolls = document.getElementById('capTolls'); const capLunch = document.getElementById('capLunch'); const capOtherTraining = document.getElementById('capOtherTraining'); const capTotalAmount = document.getElementById('capTotalAmount'); const capAmountInWords = document.getElementById('capAmountInWords'); const capSubAmounts = document.querySelectorAll('.cap-sub-amount'); // This will now include local transport and other items, but not fuel subtotal directly
+        const corrFields = document.getElementById('correspondenciaFields'); const corrDetail = document.getElementById('corrDetail'); const corrRequestedBy = document.getElementById('corrRequestedBy'); const corrSentBy = document.getElementById('corrSentBy'); const corrDate = document.getElementById('corrDate'); const corrInvoiceNumber = document.getElementById('corrInvoiceNumber'); const corrAmount = document.getElementById('corrAmount'); const corrAmountInWords = document.getElementById('corrAmountInWords');
+        const otrosFields = document.getElementById('otrosFields'); const otrosReason = document.getElementById('otrosReason'); const otrosAmount = document.getElementById('otrosAmount'); const otrosAmountInWords = document.getElementById('otrosAmountInWords');
+        const otrosPaidTo = document.getElementById('otrosPaidTo'); 
+        const formSections = [adqFields, capFields, corrFields, otrosFields];
+
+        let currentUserId = null;
+        let hospitalConfigDocRef = null; let sendaConfigDocRef = null; let expensesColRef = null;
+        let unsubscribeHospitalConfig = null; let unsubscribeSendaConfig = null; let unsubscribeExpenses = null;
+        let hospitalConfig = undefined;  let sendaConfig = undefined;   
+        let activeFund = 'hospital'; 
+        let confirmCallback = null; let selectFundCallback = null;
+        let currentExpenseDataForPreview = null;
+        let editingExpenseId = null; 
+        let originalEditingExpenseAmount = 0; 
+        let allActiveFundExpenses = [];
+
+
+        const FIXED_INITIAL_AMOUNTS = {
+            hospital: 400000,
+            senda: 250000
+        };
+
+        function showPage(pageId) { pages.forEach(page => page.classList.toggle('active', page.id === pageId)); window.scrollTo(0, 0); }
+        function getActiveConfig() { return activeFund === 'hospital' ? hospitalConfig : sendaConfig; }
+        function getActiveConfigDocRef() { return activeFund === 'hospital' ? hospitalConfigDocRef : sendaConfigDocRef; }
+        function getActiveFundName() { return activeFund === 'hospital' ? 'Hospital' : 'SENDA'; }
+
+        async function initializeFundConfigIfNeeded(fundType, configDocRef) {
+            if (!currentUserId) return; 
+            const docSnap = await getDoc(configDocRef);
+            if (!docSnap.exists()) {
+                const initialAmount = FIXED_INITIAL_AMOUNTS[fundType];
+                console.log(`Initializing ${fundType} fund with ${initialAmount}`);
+                try {
+                    await setDoc(configDocRef, { 
+                        initialAmount: initialAmount, 
+                        currentBalance: initialAmount, 
+                        updatedAt: serverTimestamp() 
+                    });
+                } catch (error) {
+                    console.error(`Error initializing ${fundType} fund:`, error);
+                }
+            }
+        }
+        
+        onAuthStateChanged(auth, async (user) => {
+            loadingIndicator.style.display = 'block'; appContentContainer.style.display = 'none';
+            if (user) {
+                currentUserId = user.uid; userIdDisplay.textContent = `ID de Usuario: ${currentUserId}`;
+                hospitalConfigDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/pettyCashConfig/hospital`);
+                sendaConfigDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/pettyCashConfig/senda`);
+                expensesColRef = collection(db, `artifacts/${appId}/users/${currentUserId}/pettyCashExpenses`);
+                
+                await initializeFundConfigIfNeeded('hospital', hospitalConfigDocRef);
+                await initializeFundConfigIfNeeded('senda', sendaConfigDocRef);
+                setupListeners(); 
+
+            } else {
+                try {
+                    await setPersistence(auth, browserLocalPersistence);
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
+                    else await signInAnonymously(auth);
+                } catch (error) { console.error("Error de autenticación:", error); loadingIndicator.innerHTML = `<p class="text-red-500">Error de autenticación.</p>`;}
+            }
+        });
+
+        function setupListeners() {
+            if (unsubscribeHospitalConfig) unsubscribeHospitalConfig();
+            unsubscribeHospitalConfig = onSnapshot(hospitalConfigDocRef, (docSnap) => {
+                hospitalConfig = docSnap.exists() ? docSnap.data() : { initialAmount: FIXED_INITIAL_AMOUNTS.hospital, currentBalance: FIXED_INITIAL_AMOUNTS.hospital }; 
+                updateMainDashboardBalances();
+                if (activeFund === 'hospital' && (historyPage.classList.contains('active') || registerExpensePage.classList.contains('active') || previewExpensePage.classList.contains('active'))) {
+                     updateUIForActiveFundContext();
+                }
+                checkAndShowAppContent();
+            }, (error) => { console.error("Error config Hospital:", error); hospitalConfig = { initialAmount: FIXED_INITIAL_AMOUNTS.hospital, currentBalance: FIXED_INITIAL_AMOUNTS.hospital }; updateMainDashboardBalances(); checkAndShowAppContent(); });
+
+            if (unsubscribeSendaConfig) unsubscribeSendaConfig();
+            unsubscribeSendaConfig = onSnapshot(sendaConfigDocRef, (docSnap) => {
+                sendaConfig = docSnap.exists() ? docSnap.data() : { initialAmount: FIXED_INITIAL_AMOUNTS.senda, currentBalance: FIXED_INITIAL_AMOUNTS.senda }; 
+                updateMainDashboardBalances();
+                 if (activeFund === 'senda' && (historyPage.classList.contains('active') || registerExpensePage.classList.contains('active') || previewExpensePage.classList.contains('active'))) {
+                     updateUIForActiveFundContext();
+                }
+                checkAndShowAppContent();
+            }, (error) => { console.error("Error config SENDA:", error); sendaConfig = { initialAmount: FIXED_INITIAL_AMOUNTS.senda, currentBalance: FIXED_INITIAL_AMOUNTS.senda }; updateMainDashboardBalances(); checkAndShowAppContent(); });
+        }
+        
+        function setupExpensesListenerForHistoryPage() {
+            if (unsubscribeExpenses) unsubscribeExpenses(); 
+            if (!currentUserId || !expensesColRef) return;
+            expenseList.innerHTML = ''; 
+            noExpensesRow.classList.add('hidden'); 
+
+            const q = query(expensesColRef, where("fundType", "==", activeFund));
+            unsubscribeExpenses = onSnapshot(q, (snapshot) => {
+                allActiveFundExpenses = []; 
+                snapshot.forEach(doc => allActiveFundExpenses.push({ id: doc.id, ...doc.data() }));
+                allActiveFundExpenses.sort((a, b) => (b.timestamp?.toDate() || 0) - (a.timestamp?.toDate() || 0));
+                filterAndRenderExpenses(); 
+            }, (error) => { console.error(`Error gastos ${activeFund}:`, error); allActiveFundExpenses = []; renderExpenses([]); });
+        }
+
+        function filterAndRenderExpenses() {
+            const searchTerm = searchInput.value.toLowerCase();
+            if (!searchTerm) {
+                renderExpenses(allActiveFundExpenses);
+                return;
+            }
+            const filteredExpenses = allActiveFundExpenses.filter(expense => {
+                const type = expense.type.toLowerCase();
+                const mainDesc = (expense.mainDescription || '').toLowerCase();
+                let paidTo = '';
+                 if (expense.type === 'adquisicion') paidTo = (expense.specificDetails.purchasedBy || '').toLowerCase();
+                 else if (expense.type === 'capacitacion') paidTo = (expense.specificDetails.participant || '').toLowerCase();
+                 else if (expense.type === 'correspondencia') paidTo = (expense.specificDetails.sentBy || '').toLowerCase();
+                 else if (expense.type === 'otros') paidTo = (expense.specificDetails.paidTo || '').toLowerCase();
+                
+                return type.includes(searchTerm) || 
+                       mainDesc.includes(searchTerm) || 
+                       paidTo.includes(searchTerm) ||
+                       (expense.specificDetails.invoiceNumber && expense.specificDetails.invoiceNumber.toLowerCase().includes(searchTerm)) ||
+                       (expense.specificDetails.requestedBy && expense.specificDetails.requestedBy.toLowerCase().includes(searchTerm));
+
+            });
+            renderExpenses(filteredExpenses);
+        }
+        searchInput.addEventListener('input', filterAndRenderExpenses);
+
+
+        function checkAndShowAppContent() {
+            if (hospitalConfig !== undefined && sendaConfig !== undefined) {
+                loadingIndicator.style.display = 'none'; appContentContainer.style.display = 'block'; 
+                if (!document.querySelector('.page.active')) { 
+                    showPage('dashboardPage');
+                }
+            }
+        }
+        
+        function updateMainDashboardBalances() {
+            dashboardHospitalBalance.textContent = hospitalConfig ? formatCurrency(hospitalConfig.currentBalance) : formatCurrency(FIXED_INITIAL_AMOUNTS.hospital);
+            dashboardSendaBalance.textContent = sendaConfig ? formatCurrency(sendaConfig.currentBalance) : formatCurrency(FIXED_INITIAL_AMOUNTS.senda);
+            dashboardHospitalBalance.classList.toggle('dashboard-balance-not-configured', !hospitalConfig);
+            dashboardSendaBalance.classList.toggle('dashboard-balance-not-configured', !sendaConfig);
+        }
+
+        function updateUIForActiveFundContext() { 
+            const currentFundConfig = getActiveConfig() || { initialAmount: FIXED_INITIAL_AMOUNTS[activeFund], currentBalance: FIXED_INITIAL_AMOUNTS[activeFund] };
+            const fundName = getActiveFundName();
+
+            if (registerExpensePage.classList.contains('active')) {
+                registerExpensePageTitleEl.textContent = fundName;
+            }
+            if (previewExpensePage.classList.contains('active')) {
+                previewExpensePageTitleEl.textContent = fundName;
+            }
+            if (historyPage.classList.contains('active')) {
+                historyPageTitleEl.textContent = fundName;
+                historyInitialAmountDisplay.textContent = formatCurrency(currentFundConfig.initialAmount);
+                historyCurrentBalanceDisplay.textContent = formatCurrency(currentFundConfig.currentBalance);
+                historyCurrentBalanceDisplay.className = 'text-3xl font-extrabold';
+                if (currentFundConfig.currentBalance < 0) historyCurrentBalanceDisplay.classList.add('balance-negative');
+                else if (currentFundConfig.currentBalance > 0) historyCurrentBalanceDisplay.classList.add('balance-positive');
+                else historyCurrentBalanceDisplay.classList.add('text-gray-800');
+                setupExpensesListenerForHistoryPage();
+            }
+        }
+
+        dashboardGoToAddExpenseBtn.addEventListener('click', () => {
+            editingExpenseId = null; originalEditingExpenseAmount = 0;
+            selectFundModalTitle.textContent = "¿Para qué caja es el nuevo gasto?";
+            selectFundCallback = (selectedFund) => {
+                activeFund = selectedFund; 
+                expenseForm.reset(); formSections.forEach(section => section.style.display = 'none'); expenseTypeSelect.value = "";
+                document.querySelectorAll('.amount-in-words').forEach(el => el.textContent = '');
+                updateUIForActiveFundContext(); showPage('registerExpensePage');
+            };
+            selectFundModal.style.display = 'flex';
+        });
+        dashboardGoToHistoryBtn.addEventListener('click', () => {
+            selectFundModalTitle.textContent = "¿De qué caja deseas ver el historial?";
+            selectFundCallback = (selectedFund) => { 
+                activeFund = selectedFund; 
+                searchInput.value = ''; 
+                showPage('historyPage'); 
+                updateUIForActiveFundContext(); 
+            };
+            selectFundModal.style.display = 'flex';
+        });
+        backToDashboardFromExpenseBtn.addEventListener('click', () => { editingExpenseId = null; originalEditingExpenseAmount = 0; showPage('dashboardPage');});
+        backToDashboardFromHistoryBtn.addEventListener('click', () => showPage('dashboardPage'));
+
+        selectFundHospitalBtn.addEventListener('click', () => { if (selectFundCallback) { activeFund = 'hospital'; selectFundCallback(activeFund); } selectFundModal.style.display = 'none'; });
+        selectFundSendaBtn.addEventListener('click', () => { if (selectFundCallback) { activeFund = 'senda'; selectFundCallback(activeFund); } selectFundModal.style.display = 'none'; });
+        selectFundModalCloseBtn.addEventListener('click', () => { selectFundModal.style.display = 'none'; selectFundCallback = null; });
+        
+        function Unidades(num) { switch (num) { case 1: return 'un'; case 2: return 'dos'; case 3: return 'tres'; case 4: return 'cuatro'; case 5: return 'cinco'; case 6: return 'seis'; case 7: return 'siete'; case 8: return 'ocho'; case 9: return 'nueve'; default: return ''; } }; 
+        function Decenas(num) { const d = Math.floor(num / 10), u = num % 10; switch (d) { case 1: switch (u) { case 0: return 'diez'; case 1: return 'once'; case 2: return 'doce'; case 3: return 'trece'; case 4: return 'catorce'; case 5: return 'quince'; default: return 'dieci' + Unidades(u).toLowerCase(); } case 2: return u === 0 ? 'veinte' : 'veinti' + Unidades(u).toLowerCase(); case 3: return 'treinta' + (u > 0 ? ' y ' + Unidades(u).toLowerCase() : ''); case 4: return 'cuarenta' + (u > 0 ? ' y ' + Unidades(u).toLowerCase() : ''); case 5: return 'cincuenta' + (u > 0 ? ' y ' + Unidades(u).toLowerCase() : ''); case 6: return 'sesenta' + (u > 0 ? ' y ' + Unidades(u).toLowerCase() : ''); case 7: return 'setenta' + (u > 0 ? ' y ' + Unidades(u).toLowerCase() : ''); case 8: return 'ochenta' + (u > 0 ? ' y ' + Unidades(u).toLowerCase() : ''); case 9: return 'noventa' + (u > 0 ? ' y ' + Unidades(u).toLowerCase() : ''); default: return Unidades(u).toLowerCase(); } }; 
+        function Centenas(num) { const c = Math.floor(num / 100), d = num % 100; switch (c) { case 1: return (d > 0) ? 'ciento ' + Decenas(d) : 'cien'; case 2: return 'doscientos ' + Decenas(d); case 3: return 'trescientos ' + Decenas(d); case 4: return 'cuatrocientos ' + Decenas(d); case 5: return 'quinientos ' + Decenas(d); case 6: return 'seiscientos ' + Decenas(d); case 7: return 'setecientos ' + Decenas(d); case 8: return 'ochocientos ' + Decenas(d); case 9: return 'novecientos ' + Decenas(d); default: return Decenas(d); } }; 
+        function Seccion(n, div, sSing, sPlur) { const c = Math.floor(n / div), r = n % div; let l = ''; if (c > 0) l = (c > 1) ? Centenas(c) + ' ' + sPlur : (div === 1000 && c === 1) ? sSing : Centenas(c) + ' ' + sSing; if (r > 0) l += (l !== '' ? ' ' : '') + Centenas(r); return l; }; 
+        function Miles(num) { return Seccion(num, 1000, 'mil', 'mil'); }; 
+        function Millones(num) { const M = Math.floor(num / 1000000), r = num % 1000000; let l = ''; if (M > 0) l = (M === 1) ? 'un millón' : Centenas(M) + ' millones'; if (r > 0) l += (l !== '' ? ' ' : '') + Miles(r); return l; };
+        function numeroALetras(num) { if (num === null || isNaN(num) || num < 0) return 'Monto inválido'; if (num === 0) return 'cero pesos'; let l = ''; if (num >= 1000000) l = Millones(num); else l = Miles(num); l = l.charAt(0).toUpperCase() + l.slice(1).trim(); return l + (num === 1 ? ' peso' : ' pesos'); }
+
+        function formatCurrency(amount) { return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(amount || 0); }
+        function formatDate(timestamp) { if (!timestamp || !timestamp.toDate) return 'Fecha inválida'; return timestamp.toDate().toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' });}
+        function formatDateForDisplay(dateString) { if (!dateString) return 'N/A'; const [year, month, day] = dateString.split('-'); return `${day}/${month}/${year}`; }
+        
+        expenseTypeSelect.addEventListener('change', (e) => {
+            const selectedType = e.target.value;
+            formSections.forEach(section => section.style.display = 'none');
+            document.querySelectorAll('.amount-in-words').forEach(el => el.textContent = '');
+            switch (selectedType) {
+                case 'adquisicion': adqFields.style.display = 'block'; break;
+                case 'capacitacion': capFields.style.display = 'block'; break;
+                case 'correspondencia': corrFields.style.display = 'block'; break;
+                case 'otros': otrosFields.style.display = 'block'; break;
+            }
+        });
+        [adqAmount, corrAmount, otrosAmount].forEach(inputEl => { inputEl.addEventListener('input', (e) => { const a = parseFloat(e.target.value); document.getElementById(e.target.id + 'InWords').textContent = numeroALetras(a); }); });
+        
+        // --- Capacitación Total Calculation ---
+        function calculateCapacitacionTotal() {
+            let totalCap = 0;
+            const fuelLiters = parseFloat(capFuelLiters.value) || 0;
+            const fuelPrice = parseFloat(capFuelPricePerLiter.value) || 0;
+            const fuelSubtotal = fuelLiters * fuelPrice;
+            capFuelSubtotalDisplay.textContent = formatCurrency(fuelSubtotal);
+            
+            totalCap += fuelSubtotal;
+            totalCap += parseFloat(capTolls.value) || 0;
+            totalCap += parseFloat(capLunch.value) || 0;
+            totalCap += parseFloat(capLocalTransportAmount.value) || 0;
+            totalCap += parseFloat(capOtherTraining.value) || 0;
+            
+            capTotalAmount.value = totalCap.toFixed(0); // No decimals for CLP typically
+            capAmountInWords.textContent = numeroALetras(totalCap);
+        }
+        [capFuelLiters, capFuelPricePerLiter, capTolls, capLunch, capLocalTransportAmount, capOtherTraining].forEach(el => {
+            el.addEventListener('input', calculateCapacitacionTotal);
+        });
+
+
+        previewExpenseBtn.addEventListener('click', () => {
+            document.getElementById('expenseFormError').textContent = '';
+            const type = expenseTypeSelect.value;
+            if (!type) { document.getElementById('expenseFormError').textContent = 'Debes seleccionar un tipo de gasto.'; return; }
+            const currentFundConfig = getActiveConfig();
+            if (!currentFundConfig) { document.getElementById('expenseFormError').textContent = `La caja ${getActiveFundName()} no está configurada.`; return; }
+
+            currentExpenseDataForPreview = { type: type, fundType: activeFund, specificDetails: {} };
+            let totalAmount = 0; let mainDescription = '';
+            
+            if (editingExpenseId && currentExpenseDataForPreview && currentExpenseDataForPreview.fechaDigitacionISO_original) {
+                 currentExpenseDataForPreview.fechaDigitacionISO = currentExpenseDataForPreview.fechaDigitacionISO_original;
+            } else {
+                currentExpenseDataForPreview.fechaDigitacionISO = new Date().toISOString();
+            }
+
+            try {
+                switch (type) {
+                    case 'adquisicion': totalAmount = parseFloat(adqAmount.value); mainDescription = adqDescription.value.trim(); if (isNaN(totalAmount) || totalAmount <= 0 || !mainDescription) throw new Error('Adquisición: Completa descripción y monto.'); currentExpenseDataForPreview.specificDetails = { description: mainDescription, requestedBy: adqRequestedBy.value.trim(), purchasedBy: adqPurchasedBy.value.trim(), purchaseDate: adqPurchaseDate.value, invoiceNumber: adqInvoiceNumber.value.trim() }; break;
+                    case 'capacitacion': 
+                        totalAmount = parseFloat(capTotalAmount.value); mainDescription = capReason.value.trim(); 
+                        if (isNaN(totalAmount) || totalAmount < 0 || !mainDescription) throw new Error('Capacitación: Completa motivo y montos válidos.'); 
+                        currentExpenseDataForPreview.specificDetails = { 
+                            reason: mainDescription, participant: capParticipant.value.trim(), 
+                            startDate: capStartDate.value, 
+                            endDate: capEndDate.value,    
+                            fuelLiters: parseFloat(capFuelLiters.value) || 0,
+                            fuelPricePerLiter: parseFloat(capFuelPricePerLiter.value) || 0,
+                            fuelSubtotal: (parseFloat(capFuelLiters.value) || 0) * (parseFloat(capFuelPricePerLiter.value) || 0),
+                            localTransportDesc: capLocalTransportDesc.value.trim(),
+                            localTransportAmount: parseFloat(capLocalTransportAmount.value) || 0,
+                            tollAmount: parseFloat(capTolls.value) || 0, 
+                            lunchAmount: parseFloat(capLunch.value) || 0, 
+                            otherTrainingAmount: parseFloat(capOtherTraining.value) || 0 
+                        }; 
+                        break;
+                    case 'correspondencia': totalAmount = parseFloat(corrAmount.value); mainDescription = corrDetail.value.trim(); if (isNaN(totalAmount) || totalAmount <= 0 || !mainDescription) throw new Error('Correspondencia: Completa detalle y monto.'); currentExpenseDataForPreview.specificDetails = { detail: mainDescription, requestedBy: corrRequestedBy.value.trim(), sentBy: corrSentBy.value.trim(), date: corrDate.value, invoiceNumber: corrInvoiceNumber.value.trim() }; break;
+                    case 'otros': totalAmount = parseFloat(otrosAmount.value); mainDescription = otrosReason.value.trim(); const paidToValue = otrosPaidTo.value.trim(); if (isNaN(totalAmount) || totalAmount <= 0 || !mainDescription) throw new Error('Otros: Completa motivo y monto.'); currentExpenseDataForPreview.specificDetails = { reason: mainDescription, paidTo: paidToValue }; break;
+                }
+                currentExpenseDataForPreview.totalAmount = totalAmount;
+                currentExpenseDataForPreview.mainDescription = mainDescription;
+                currentExpenseDataForPreview.amountInWords = numeroALetras(totalAmount);
+                populatePreviewContent(currentExpenseDataForPreview);
+                updateUIForActiveFundContext(); showPage('previewExpensePage');
+            } catch (error) {
+                console.error("Error al preparar previsualización:", error);
+                document.getElementById('expenseFormError').textContent = error.message || 'Error en datos del formulario.';
+                currentExpenseDataForPreview = null;
+            }
+        });
+
+        function populatePreviewContent(data) {
+            let html = `<div class="preview-section"><h4>Resumen del Gasto</h4>`;
+            html += `<p class="preview-item"><strong>Caja:</strong> <span>${data.fundType === 'hospital' ? 'Hospital' : 'SENDA'}</span></p>`;
+            html += `<p class="preview-item"><strong>Tipo de Gasto:</strong> <span>${data.type.charAt(0).toUpperCase() + data.type.slice(1)}</span></p>`;
+            html += `<p class="preview-item"><strong>Fecha de Digitación:</strong> <span>${new Date(data.fechaDigitacionISO).toLocaleString('es-CL')}</span></p></div>`;
+            html += `<div class="preview-section"><h4>Detalles Específicos</h4>`;
+            switch (data.type) {
+                case 'adquisicion': html += `<p class="preview-item"><strong>Descripción:</strong> <span>${data.specificDetails.description || 'N/A'}</span></p><p class="preview-item"><strong>Solicitado por:</strong> <span>${data.specificDetails.requestedBy || 'N/A'}</span></p><p class="preview-item"><strong>Comprado por (Pagado a):</strong> <span>${data.specificDetails.purchasedBy || 'N/A'}</span></p><p class="preview-item"><strong>Fecha Compra:</strong> <span>${formatDateForDisplay(data.specificDetails.purchaseDate)}</span></p><p class="preview-item"><strong>Nº Boleta/Factura:</strong> <span>${data.specificDetails.invoiceNumber || 'N/A'}</span></p>`; break;
+                case 'capacitacion': 
+                    html += `<p class="preview-item"><strong>Motivo:</strong> <span>${data.specificDetails.reason || 'N/A'}</span></p>`;
+                    html += `<p class="preview-item"><strong>Participante (Pagado a):</strong> <span>${data.specificDetails.participant || 'N/A'}</span></p>`;
+                    html += `<p class="preview-item"><strong>Fecha Inicio:</strong> <span>${formatDateForDisplay(data.specificDetails.startDate)}</span></p>`;
+                    html += `<p class="preview-item"><strong>Fecha Término:</strong> <span>${formatDateForDisplay(data.specificDetails.endDate)}</span></p>`;
+                    html += `<p class="preview-item"><strong>Combustible (Litros):</strong> <span>${data.specificDetails.fuelLiters || 0} L</span></p>`;
+                    html += `<p class="preview-item"><strong>Combustible (Precio/Litro):</strong> <span>${formatCurrency(data.specificDetails.fuelPricePerLiter)}</span></p>`;
+                    html += `<p class="preview-item"><strong>Combustible (Subtotal):</strong> <span>${formatCurrency(data.specificDetails.fuelSubtotal)}</span></p>`;
+                    html += `<p class="preview-item"><strong>Peaje:</strong> <span>${formatCurrency(data.specificDetails.tollAmount)}</span></p>`;
+                    html += `<p class="preview-item"><strong>Almuerzo:</strong> <span>${formatCurrency(data.specificDetails.lunchAmount)}</span></p>`;
+                    html += `<p class="preview-item"><strong>Movilización Local (Desc.):</strong> <span>${data.specificDetails.localTransportDesc || 'N/A'}</span></p>`;
+                    html += `<p class="preview-item"><strong>Movilización Local (Monto):</strong> <span>${formatCurrency(data.specificDetails.localTransportAmount)}</span></p>`;
+                    html += `<p class="preview-item"><strong>Otros (Capacitación):</strong> <span>${formatCurrency(data.specificDetails.otherTrainingAmount)}</span></p>`; 
+                    break;
+                case 'correspondencia': html += `<p class="preview-item"><strong>Detalle:</strong> <span>${data.specificDetails.detail || 'N/A'}</span></p><p class="preview-item"><strong>A solicitud de:</strong> <span>${data.specificDetails.requestedBy || 'N/A'}</span></p><p class="preview-item"><strong>Enviado por (Pagado a):</strong> <span>${data.specificDetails.sentBy || 'N/A'}</span></p><p class="preview-item"><strong>Fecha Envío:</strong> <span>${formatDateForDisplay(data.specificDetails.date)}</span></p><p class="preview-item"><strong>Nº Boleta/Despacho:</strong> <span>${data.specificDetails.invoiceNumber || 'N/A'}</span></p>`; break;
+                case 'otros': html += `<p class="preview-item"><strong>Motivo:</strong> <span>${data.specificDetails.reason || 'N/A'}</span></p><p class="preview-item"><strong>Entregado A / Beneficiario:</strong> <span>${data.specificDetails.paidTo || 'N/A'}</span></p>`; break;
+            }
+            html += `</div>`;
+            html += `<div class="preview-section"><h4>Totales</h4>`;
+            html += `<p class="preview-item"><strong>Monto Total:</strong> <span class="font-bold text-lg">${formatCurrency(data.totalAmount)}</span></p>`;
+            html += `<p class="preview-item"><strong>Monto en Letras:</strong> <span>${data.amountInWords}</span></p></div>`;
+            previewContent.innerHTML = html;
+        }
+        
+        editPreviewBtn.addEventListener('click', () => {
+            if (!currentExpenseDataForPreview) return;
+            editingExpenseId = currentExpenseDataForPreview.id_fs || currentExpenseDataForPreview.id || editingExpenseId; 
+            originalEditingExpenseAmount = currentExpenseDataForPreview.totalAmount; 
+            
+            expenseTypeSelect.value = currentExpenseDataForPreview.type;
+            expenseTypeSelect.dispatchEvent(new Event('change')); 
+            const details = currentExpenseDataForPreview.specificDetails;
+            switch (currentExpenseDataForPreview.type) {
+                case 'adquisicion': adqDescription.value = details.description; adqRequestedBy.value = details.requestedBy; adqPurchasedBy.value = details.purchasedBy; adqPurchaseDate.value = details.purchaseDate; adqInvoiceNumber.value = details.invoiceNumber; adqAmount.value = currentExpenseDataForPreview.totalAmount; adqAmount.dispatchEvent(new Event('input')); break;
+                case 'capacitacion': 
+                    capReason.value = details.reason; capParticipant.value = details.participant; 
+                    capStartDate.value = details.startDate || ''; 
+                    capEndDate.value = details.endDate || '';
+                    capFuelLiters.value = details.fuelLiters || 0;
+                    capFuelPricePerLiter.value = details.fuelPricePerLiter || 0;
+                    capLocalTransportDesc.value = details.localTransportDesc || '';
+                    capLocalTransportAmount.value = details.localTransportAmount || 0;
+                    capTolls.value = details.tollAmount || 0; capLunch.value = details.lunchAmount || 0; capOtherTraining.value = details.otherTrainingAmount || 0; 
+                    calculateCapacitacionTotal(); // Recalculate and display
+                    break;
+                case 'correspondencia': corrDetail.value = details.detail; corrRequestedBy.value = details.requestedBy; corrSentBy.value = details.sentBy; corrDate.value = details.date; corrInvoiceNumber.value = details.invoiceNumber; corrAmount.value = currentExpenseDataForPreview.totalAmount; corrAmount.dispatchEvent(new Event('input')); break;
+                case 'otros': otrosReason.value = details.reason; otrosPaidTo.value = details.paidTo || ''; otrosAmount.value = currentExpenseDataForPreview.totalAmount; otrosAmount.dispatchEvent(new Event('input')); break;
+            }
+            if(currentExpenseDataForPreview.fechaDigitacionISO) {
+                currentExpenseDataForPreview.fechaDigitacionISO_original = currentExpenseDataForPreview.fechaDigitacionISO;
+            }
+            showPage('registerExpensePage');
+        });
+
+        discardPreviewBtn.addEventListener('click', () => {
+            currentExpenseDataForPreview = null; editingExpenseId = null; originalEditingExpenseAmount = 0;
+            expenseForm.reset(); formSections.forEach(section => section.style.display = 'none'); expenseTypeSelect.value = "";
+            document.querySelectorAll('.amount-in-words').forEach(el => el.textContent = '');
+            capFuelSubtotalDisplay.textContent = formatCurrency(0); // Reset fuel subtotal display
+            showPage('dashboardPage');
+        });
+
+        confirmAndSaveExpenseBtn.addEventListener('click', async () => {
+            if (!currentExpenseDataForPreview) return;
+            confirmAndSaveExpenseBtn.disabled = true; confirmAndSaveExpenseBtn.classList.add('opacity-50');
+            
+            const dataToSave = { ...currentExpenseDataForPreview };
+            delete dataToSave.fechaDigitacion; 
+            
+            if (editingExpenseId) {
+                dataToSave.lastModified = serverTimestamp();
+                if (!dataToSave.timestamp && currentExpenseDataForPreview.timestamp) {
+                    dataToSave.timestamp = currentExpenseDataForPreview.timestamp;
+                } else if (!dataToSave.timestamp) { 
+                     dataToSave.timestamp = serverTimestamp();
+                }
+            } else {
+                dataToSave.timestamp = serverTimestamp(); 
+            }
+            delete dataToSave.id_fs; 
+            delete dataToSave.fechaDigitacionISO_original;
+
+            const configRef = getActiveConfigDocRef();
+
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const fundConfigSnapshot = await transaction.get(configRef);
+                    if (!fundConfigSnapshot.exists()) throw "La configuración del fondo no existe.";
+                    const fundData = fundConfigSnapshot.data();
+                    let newBalance;
+
+                    if (editingExpenseId) {
+                        const expenseRef = doc(expensesColRef, editingExpenseId);
+                        newBalance = fundData.currentBalance + originalEditingExpenseAmount - dataToSave.totalAmount;
+                        transaction.set(expenseRef, dataToSave, { merge: true }); 
+                    } else {
+                        const newExpenseRef = doc(expensesColRef); 
+                        newBalance = fundData.currentBalance - dataToSave.totalAmount;
+                        transaction.set(newExpenseRef, dataToSave); 
+                    }
+                    transaction.update(configRef, { currentBalance: newBalance, updatedAt: serverTimestamp() });
+                });
+                
+                console.log(editingExpenseId ? "Gasto actualizado" : "Gasto agregado");
+                await generateExpensePDF(dataToSave); 
+                currentExpenseDataForPreview = null; editingExpenseId = null; originalEditingExpenseAmount = 0;
+                showPage('dashboardPage');
+            } catch (error) {
+                console.error("Error al guardar gasto:", error);
+                alert("Error al guardar el gasto. Intente nuevamente. " + error);
+            } finally {
+                 confirmAndSaveExpenseBtn.disabled = false; confirmAndSaveExpenseBtn.classList.remove('opacity-50');
+            }
+        });
+
+        async function generateExpensePDF(expenseData) {
+            const pdfElement = document.createElement('div');
+            pdfElement.style.width = '180mm'; pdfElement.style.margin = '0 auto'; 
+            
+            const tableStyle = "width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 9pt;";
+            const thStyle = "border: 1px solid #ccc; text-align: left; padding: 5px; background-color: #e9ecef; font-weight: bold;";
+            const tdStyle = "border: 1px solid #ccc; text-align: left; padding: 5px;";
+            const sectionTitleStyle = "font-size: 11pt; color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 3px; margin-top: 15px; margin-bottom:8px;";
+            const mainTitleStyle = "margin: 0 0 10px 0; font-size: 16pt; color: #1a237e; text-align: center;";
+            const subTitleStyle = "margin: 0 0 15px 0; font-size: 10pt; color: #555; text-align: center;";
+            const rootDivStyle = `font-family: Arial, sans-serif; color: #333; padding: 5mm; font-size: 9pt;`;
+
+            let pdfHtml = `<div style="${rootDivStyle}">
+                <table style="width: 100%; margin-bottom: 15px; border: none;"><tr><td style="width: 100%; text-align: center; vertical-align: middle; border: none;"><h1 style="${mainTitleStyle}">Comprobante de Caja Gastos Menores - Hospital de Frutillar</h1><p style="${subTitleStyle}">Caja: <strong>${expenseData.fundType === 'hospital' ? 'Presupuesto Hospital' : 'Presupuesto SENDA'}</strong></p></td></tr></table>
+                <h3 style="${sectionTitleStyle}">Información General</h3><table style="${tableStyle}"><tr><td style="${tdStyle} width: 35%;"><strong>Tipo de Gasto:</strong></td><td style="${tdStyle}">${expenseData.type.charAt(0).toUpperCase() + expenseData.type.slice(1)}</td></tr><tr><td style="${tdStyle}"><strong>Fecha de Digitación:</strong></td><td style="${tdStyle}">${new Date(expenseData.fechaDigitacionISO).toLocaleString('es-CL')}</td></tr></table>
+                <h3 style="${sectionTitleStyle}">Detalles del Gasto</h3><table style="${tableStyle}"><thead><tr><th style="${thStyle}">Campo</th><th style="${thStyle}">Valor</th></tr></thead><tbody>`;
+            const details = expenseData.specificDetails;
+            function addRowToPdf(label, value) { pdfHtml += `<tr><td style="${tdStyle} width: 35%;">${label}</td><td style="${tdStyle}">${value || 'N/A'}</td></tr>`; }
+            switch (expenseData.type) {
+                case 'adquisicion': addRowToPdf('Descripción', details.description); addRowToPdf('Solicitado por', details.requestedBy); addRowToPdf('Comprado por (Pagado a)', details.purchasedBy); addRowToPdf('Fecha Compra', formatDateForDisplay(details.purchaseDate)); addRowToPdf('Nº Boleta/Factura', details.invoiceNumber); break;
+                case 'capacitacion': 
+                    addRowToPdf('Motivo', details.reason); 
+                    addRowToPdf('Participante (Pagado a)', details.participant); 
+                    addRowToPdf('Fecha Inicio', formatDateForDisplay(details.startDate)); 
+                    addRowToPdf('Fecha Término', formatDateForDisplay(details.endDate)); 
+                    addRowToPdf('Combustible (Litros)', details.fuelLiters);
+                    addRowToPdf('Combustible (Precio/Litro)', formatCurrency(details.fuelPricePerLiter));
+                    addRowToPdf('Combustible (Subtotal)', formatCurrency(details.fuelSubtotal));
+                    addRowToPdf('Peaje', formatCurrency(details.tollAmount)); 
+                    addRowToPdf('Almuerzo', formatCurrency(details.lunchAmount)); 
+                    addRowToPdf('Mov. Local (Desc.)', details.localTransportDesc);
+                    addRowToPdf('Mov. Local (Monto)', formatCurrency(details.localTransportAmount));
+                    addRowToPdf('Otros (Capacitación)', formatCurrency(details.otherTrainingAmount)); 
+                    break;
+                case 'correspondencia': addRowToPdf('Detalle', details.detail); addRowToPdf('A solicitud de', details.requestedBy); addRowToPdf('Enviado por (Pagado a)', details.sentBy); addRowToPdf('Fecha Envío', formatDateForDisplay(details.date)); addRowToPdf('Nº Boleta/Despacho', details.invoiceNumber); break;
+                case 'otros': addRowToPdf('Motivo', details.reason); addRowToPdf('Entregado A / Beneficiario', details.paidTo); break;
+            }
+            pdfHtml += `</tbody></table><h3 style="${sectionTitleStyle}">Totales</h3><table style="${tableStyle}"><tr><td style="${tdStyle} width: 35%;"><strong>Monto Total:</strong></td><td style="${tdStyle} font-weight: bold; font-size: 10pt;">${formatCurrency(expenseData.totalAmount)}</td></tr><tr><td style="${tdStyle}"><strong>Monto en Letras:</strong></td><td style="${tdStyle}">${expenseData.amountInWords}</td></tr></table>`;
+            
+            pdfHtml += `
+                <div style="margin-top: 30mm; padding-top: 10mm; border-top: 1px dashed #ccc;">
+                    <table style="width: 100%; border: none; font-size: 9pt;">
+                        <tr>
+                            <td style="width: 50%; text-align: center; border: none; padding-top: 20px;">
+                                <div style="width: 80%; margin: 0 auto 5px auto; border-top: 1px solid #333;"></div>
+                                Firma Interesado
+                            </td>
+                            <td style="width: 50%; text-align: center; border: none; padding-top: 20px;">
+                                <div style="width: 80%; margin: 0 auto 5px auto; border-top: 1px solid #333;"></div>
+                                RUT Interesado
+                            </td>
+                        </tr>
+                    </table>
+                </div>`;
+            
+            pdfHtml += `<div style="margin-top: 15mm; text-align: center; font-size: 8pt; color: #7f8c8d;"><p>Documento generado por Gestor de Gastos Menores el ${new Date().toLocaleDateString('es-CL')}</p></div></div>`;
+            pdfElement.innerHTML = pdfHtml; document.body.appendChild(pdfElement);
+            const opt = { margin: 8, filename: `Comprobante_Gasto_${expenseData.fundType}_${expenseData.type}_${new Date(expenseData.fechaDigitacionISO).toISOString().slice(0,10)}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, logging: false, useCORS: true, scrollY: 0 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['avoid-all', 'css', 'legacy'] } };
+            try { await html2pdf().from(pdfElement).set(opt).save(); } catch (e) { console.error("Error generando PDF:", e); alert("Hubo un problema al generar el PDF."); } finally { if (document.body.contains(pdfElement)) { document.body.removeChild(pdfElement); } }
+        }
+
+        function renderExpenses(expenses) {
+            expenseList.innerHTML = '';
+            if (expenses.length === 0) {
+                noExpensesRow.classList.remove('hidden');
+                noExpensesRow.querySelector('p').textContent = `No hay gastos para ${getActiveFundName()} que coincidan con la búsqueda.`;
+            } else {
+                noExpensesRow.classList.add('hidden');
+                expenses.forEach(expense => {
+                    const row = expenseList.insertRow();
+                    const displayDescription = expense.mainDescription || 'N/A';
+                    const displayType = expense.type.charAt(0).toUpperCase() + expense.type.slice(1);
+                    let paidTo = 'N/A';
+                    if (expense.type === 'adquisicion') paidTo = expense.specificDetails.purchasedBy;
+                    else if (expense.type === 'capacitacion') paidTo = expense.specificDetails.participant;
+                    else if (expense.type === 'correspondencia') paidTo = expense.specificDetails.sentBy;
+                    else if (expense.type === 'otros') paidTo = expense.specificDetails.paidTo;
+
+                    row.innerHTML = `
+                        <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900">${displayType}</td>
+                        <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-700 truncate" title="${displayDescription}">${displayDescription.substring(0,25)}${displayDescription.length > 25 ? '...' : ''}</td>
+                        <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-700 truncate" title="${paidTo || 'N/A'}">${(paidTo || 'N/A').substring(0,20)}${(paidTo || '').length > 20 ? '...' : ''}</td>
+                        <td class="px-3 py-3 whitespace-nowrap text-sm text-red-600 text-right">${formatCurrency(expense.totalAmount)}</td>
+                        <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-500">${formatDate(expense.timestamp)}</td>
+                        <td class="px-3 py-3 whitespace-nowrap text-center text-sm font-medium space-x-1">
+                            <button data-id="${expense.id}" class="edit-expense-btn text-blue-600 hover:text-blue-800 history-action-btn" title="Editar Gasto"><i class="fas fa-edit"></i></button>
+                            <button data-id="${expense.id}" class="export-pdf-btn text-red-600 hover:text-red-800 history-action-btn" title="Exportar a PDF"><i class="fas fa-file-pdf"></i></button>
+                            <button data-id="${expense.id}" data-amount="${expense.totalAmount}" data-fund="${expense.fundType}" class="delete-expense-btn text-gray-600 hover:text-gray-800 history-action-btn" title="Eliminar Gasto"><i class="fas fa-trash-alt"></i></button>
+                        </td>`;
+                });
+                
+                document.querySelectorAll('.edit-expense-btn').forEach(button => {
+                    button.addEventListener('click', async (e) => {
+                        const expenseId = e.currentTarget.dataset.id;
+                        const expenseDocRef = doc(expensesColRef, expenseId);
+                        try {
+                            const docSnap = await getDoc(expenseDocRef);
+                            if (docSnap.exists()) {
+                                const expenseData = { id: docSnap.id, ...docSnap.data() };
+                                editingExpenseId = expenseData.id;
+                                originalEditingExpenseAmount = expenseData.totalAmount;
+                                activeFund = expenseData.fundType; 
+                                
+                                expenseTypeSelect.value = expenseData.type;
+                                expenseTypeSelect.dispatchEvent(new Event('change')); 
+                                const details = expenseData.specificDetails;
+                                switch (expenseData.type) {
+                                    case 'adquisicion': adqDescription.value = details.description; adqRequestedBy.value = details.requestedBy; adqPurchasedBy.value = details.purchasedBy; adqPurchaseDate.value = details.purchaseDate; adqInvoiceNumber.value = details.invoiceNumber; adqAmount.value = expenseData.totalAmount; adqAmount.dispatchEvent(new Event('input')); break;
+                                    case 'capacitacion': 
+                                        capReason.value = details.reason; capParticipant.value = details.participant; 
+                                        capStartDate.value = details.startDate || ''; 
+                                        capEndDate.value = details.endDate || '';
+                                        capFuelLiters.value = details.fuelLiters || 0;
+                                        capFuelPricePerLiter.value = details.fuelPricePerLiter || 0;
+                                        capLocalTransportDesc.value = details.localTransportDesc || '';
+                                        capLocalTransportAmount.value = details.localTransportAmount || 0;
+                                        capTolls.value = details.tollAmount || 0; capLunch.value = details.lunchAmount || 0; capOtherTraining.value = details.otherTrainingAmount || 0; 
+                                        calculateCapacitacionTotal();
+                                        break;
+                                    case 'correspondencia': corrDetail.value = details.detail; corrRequestedBy.value = details.requestedBy; corrSentBy.value = details.sentBy; corrDate.value = details.date; corrInvoiceNumber.value = details.invoiceNumber; corrAmount.value = expenseData.totalAmount; corrAmount.dispatchEvent(new Event('input')); break;
+                                    case 'otros': otrosReason.value = details.reason; otrosPaidTo.value = details.paidTo || ''; otrosAmount.value = expenseData.totalAmount; otrosAmount.dispatchEvent(new Event('input')); break;
+                                }
+                                currentExpenseDataForPreview = { ...expenseData }; 
+                                if (expenseData.fechaDigitacionISO) { 
+                                     currentExpenseDataForPreview.fechaDigitacionISO_original = expenseData.fechaDigitacionISO;
+                                } else if (expenseData.timestamp) { 
+                                    currentExpenseDataForPreview.fechaDigitacionISO_original = expenseData.timestamp.toDate().toISOString();
+                                }
+                                updateUIForActiveFundContext();
+                                showPage('registerExpensePage');
+                            } else { console.error("No se encontró el documento para editar."); alert("Error: No se encontró el gasto para editar."); }
+                        } catch (error) { console.error("Error al cargar gasto para editar:", error); alert("Error al cargar el gasto para editar."); }
+                    });
+                });
+
+                document.querySelectorAll('.export-pdf-btn').forEach(button => {
+                    button.addEventListener('click', async (e) => {
+                        const expenseId = e.currentTarget.dataset.id;
+                        const expenseDocRef = doc(expensesColRef, expenseId);
+                        try {
+                            const docSnap = await getDoc(expenseDocRef);
+                            if (docSnap.exists()) {
+                                const expenseDataForPdf = { id: docSnap.id, ...docSnap.data() };
+                                if (!expenseDataForPdf.fechaDigitacionISO && expenseDataForPdf.timestamp) {
+                                    expenseDataForPdf.fechaDigitacionISO = expenseDataForPdf.timestamp.toDate().toISOString();
+                                } else if (!expenseDataForPdf.fechaDigitacionISO) { 
+                                    expenseDataForPdf.fechaDigitacionISO = new Date().toISOString(); 
+                                }
+                                await generateExpensePDF(expenseDataForPdf);
+                            } else { console.error("No se encontró el documento para exportar a PDF."); alert("Error: No se encontró el gasto para exportar."); }
+                        } catch (error) { console.error("Error al exportar gasto a PDF:", error); alert("Error al exportar el gasto a PDF."); }
+                    });
+                });
+
+                document.querySelectorAll('.delete-expense-btn').forEach(b => { b.addEventListener('click', (e) => { const id = e.currentTarget.dataset.id; const amt = parseFloat(e.currentTarget.dataset.amount); const fund = e.currentTarget.dataset.fund; openConfirmationModal('Eliminar Gasto', `¿Seguro eliminar este gasto de la caja ${fund === 'hospital' ? 'Hospital' : 'SENDA'}? Se reajustará el saldo.`, async () => { await deleteExpense(id, amt, fund); }); }); });
+            }
+        };
+        async function deleteExpense(expenseId, expenseAmount, expenseFund) { 
+            const configRefToUpdate = expenseFund === 'hospital' ? hospitalConfigDocRef : sendaConfigDocRef; 
+            if (!currentUserId || !configRefToUpdate) { console.error("Error: No se pudo determinar config de caja para actualizar saldo."); return; } 
+            try { 
+                await runTransaction(db, async (transaction) => {
+                    const fundConfigSnapshot = await transaction.get(configRefToUpdate);
+                    if (!fundConfigSnapshot.exists()) throw "La configuración del fondo no existe para la eliminación.";
+                    const fundData = fundConfigSnapshot.data();
+                    const newBalance = fundData.currentBalance + expenseAmount;
+                    transaction.update(configRefToUpdate, { currentBalance: newBalance, updatedAt: serverTimestamp() });
+                    transaction.delete(doc(expensesColRef, expenseId));
+                });
+                console.log("Gasto eliminado y saldo actualizado.");
+            } catch (error) { console.error(`Error al eliminar gasto de ${expenseFund}:`, error); alert("Error al eliminar el gasto."); } 
+        };
+        
+        replenishCashBtn.addEventListener('click', () => { 
+            const currentFundConfig = getActiveConfig() || { initialAmount: FIXED_INITIAL_AMOUNTS[activeFund] }; 
+            openConfirmationModal(`Restablecer Caja ${getActiveFundName()}`, 
+                `Esto reestablecerá el saldo actual de la caja ${getActiveFundName()} a su fondo inicial (${formatCurrency(currentFundConfig.initialAmount)}) y eliminará todos los gastos registrados para ESTA CAJA. ¿Continuar?`, 
+                async () => { 
+                    const configRef = getActiveConfigDocRef(); 
+                    if (!currentUserId || !configRef ) return; 
+                    try { 
+                        await runTransaction(db, async (transaction) => {
+                            let fundData;
+                            const fundConfigSnapshot = await transaction.get(configRef);
+                            if (fundConfigSnapshot.exists()) { fundData = fundConfigSnapshot.data();
+                            } else { fundData = { initialAmount: FIXED_INITIAL_AMOUNTS[activeFund] }; transaction.set(configRef, { ...fundData, currentBalance: fundData.initialAmount, updatedAt: serverTimestamp()}); }
+                            transaction.update(configRef, { currentBalance: fundData.initialAmount, updatedAt: serverTimestamp() });
+                        });
+                        const qExpenses = query(expensesColRef, where("fundType", "==", activeFund));
+                        const expenseDocsSnapshot = await getDocs(qExpenses);
+                        const batch = writeBatch(db);
+                        expenseDocsSnapshot.forEach(doc => batch.delete(doc.ref));
+                        await batch.commit();
+                        console.log(`Caja ${activeFund} restablecida y gastos eliminados.`);
+                    } catch (error) { console.error(`Error al reponer ${activeFund}:`, error); alert(`Error al reponer la caja ${activeFund}.`); } 
+                }
+            ); 
+        });
+        
+        function openConfirmationModal(title, message, onConfirm) { confirmationTitle.textContent = title; confirmationMessage.textContent = message; confirmCallback = onConfirm; confirmationModal.style.display = 'flex'; confirmOkBtn.className = 'bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center justify-center'; confirmOkBtn.innerHTML = '<i class="fas fa-check mr-2"></i>Confirmar'; }
+        confirmOkBtn.addEventListener('click', async () => { if (confirmCallback) await confirmCallback(); closeConfirmationModal(); });
+        confirmCancelBtn.addEventListener('click', closeConfirmationModal);
+        function closeConfirmationModal() { confirmationModal.style.display = 'none'; confirmCallback = null; }
+        window.onclick = function(event) { 
+            if (event.target == confirmationModal) { closeConfirmationModal(); } 
+            if (event.target == selectFundModal) { selectFundModal.style.display = 'none'; selectFundCallback = null; } 
+        }
+
+        exportToExcelBtn.addEventListener('click', () => {
+            const fromDateStr = exportDateFrom.value;
+            const toDateStr = exportDateTo.value;
+
+            if (!fromDateStr || !toDateStr) {
+                alert("Por favor, seleccione un rango de fechas para exportar.");
+                return;
+            }
+
+            const startDate = new Date(fromDateStr + "T00:00:00");
+            const endDate = new Date(toDateStr + "T23:59:59");
+
+            if (startDate > endDate) {
+                alert("La fecha 'Desde' no puede ser posterior a la fecha 'Hasta'.");
+                return;
+            }
+            
+            const expensesToExport = allActiveFundExpenses.filter(expense => {
+                const expenseDate = expense.timestamp.toDate();
+                return expenseDate >= startDate && expenseDate <= endDate;
+            });
+
+            if (expensesToExport.length === 0) {
+                alert("No hay gastos en el período seleccionado para exportar.");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,";
+            const headers = ["Fecha de Digitación", "Monto del Gasto", "Motivo o Descripción del Gasto", "A Quién se le Paga"];
+            csvContent += headers.join(";") + "\r\n";
+
+            expensesToExport.forEach(expense => {
+                const fechaDigitacion = expense.fechaDigitacionISO ? new Date(expense.fechaDigitacionISO).toLocaleString('es-CL') : (expense.timestamp ? expense.timestamp.toDate().toLocaleString('es-CL') : 'N/A');
+                const montoGasto = expense.totalAmount;
+                const motivoDescripcion = (expense.mainDescription || '').replace(/"/g, '""');
+                
+                let paidTo = 'N/A';
+                if (expense.type === 'adquisicion') paidTo = expense.specificDetails.purchasedBy;
+                else if (expense.type === 'capacitacion') paidTo = expense.specificDetails.participant;
+                else if (expense.type === 'correspondencia') paidTo = expense.specificDetails.sentBy;
+                else if (expense.type === 'otros') paidTo = expense.specificDetails.paidTo;
+                paidTo = (paidTo || '').replace(/"/g, '""');
+
+                let row = [fechaDigitacion, montoGasto, `"${motivoDescripcion}"`, `"${paidTo}"`];
+                csvContent += row.join(";") + "\r\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Historial_Gastos_${activeFund}_${fromDateStr}_a_${toDateStr}.csv`);
+            document.body.appendChild(link); 
+            link.click();
+            document.body.removeChild(link);
+        });
+
+    </script>
+</body>
+</html>
